@@ -2,32 +2,55 @@ version: 2
 
 models:
   - name: stg_customers
+    description: Cleaned customer records from the raw customer seed.
     columns:
       - name: customer_id
         tests:
           - unique
           - not_null
+      - name: first_name
+        description: Customer's first name. PII.
+      - name: last_name
+        description: Customer's last name. PII.
 
   - name: stg_orders
+    description: Cleaned order records from the raw order seed.
     columns:
       - name: order_id
+        description: Unique identifier for an order.
         tests:
           - unique
           - not_null
+      - name: customer_id
+        description: Foreign key to the customer who placed the order.
+        tests:
+          - not_null
+      - name: order_date
+        description: Date (UTC) that the order was placed.
       - name: status
+        description: '{{ doc("orders_status") }}'
         tests:
           - accepted_values:
               arguments:
                 values: ['placed', 'shipped', 'completed', 'return_pending', 'returned']
 
   - name: stg_payments
+    description: Cleaned payment records from the raw payment seed.
     columns:
       - name: payment_id
+        description: Unique identifier for a payment.
         tests:
           - unique
           - not_null
+      - name: order_id
+        description: Foreign key to the order associated with the payment.
+        tests:
+          - not_null
       - name: payment_method
+        description: Method used to pay for the order.
         tests:
           - accepted_values:
               arguments:
                 values: ['credit_card', 'coupon', 'bank_transfer', 'gift_card']
+      - name: amount
+        description: Payment amount in dollars.

@@ -1,0 +1,19 @@
+name: project_metadata_checks
+version: '0.1.0'
+config-version: 2
+
+profile: project_metadata_checks
+
+model-paths: ["models"]
+test-paths: ["tests"]
+macro-paths: ["macros"]
+
+vars:
+  metadata_index_dir: "target/index"
+  metadata_project_package: "jaffle_shop"
+  metadata_single_column_pk_requires_not_null: true
+
+data_tests:
+  project_metadata_checks:
+    +tags:
+      - project_metadata_checks

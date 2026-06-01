@@ -1,0 +1,9 @@
+repos:
+  - repo: local
+    hooks:
+      - id: dbt-project-metadata-checks
+        name: dbt project metadata checks
+        entry: scripts/check_project_metadata.sh
+        language: system
+        pass_filenames: false
+        files: ^(dbt_project\.yml|profiles\.yml|models/|metadata_checks/|scripts/check_project_metadata\.sh|\.pre-commit-config\.yaml)

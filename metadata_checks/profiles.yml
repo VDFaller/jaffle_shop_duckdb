@@ -1,0 +1,7 @@
+project_metadata_checks:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      path: ":memory:"
+      threads: 4
