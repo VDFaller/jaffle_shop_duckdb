@@ -26,8 +26,8 @@ scripts/check_project_metadata.sh --verbose
 - Define metadata expectations in the parent project with
   `meta.metadata_checks`.
 - Set broad defaults in `dbt_project.yml`.
-- Put model-specific overrides in schema YAML with
-  `config.meta.metadata_checks`.
+- Put model-specific overrides in schema YAML with `config.meta.metadata_checks`
+  or in model SQL with `config(meta=...)`.
 - Keep `metadata_checks` generic so policy changes do not require changing the
   test project.
 - Failed checks point back to the schema YAML location to fix.
@@ -60,6 +60,11 @@ models:
         metadata_checks:
           require_column_descriptions: true
           require_primary_key_test: true
+
+```
+
+```sql
+{{ config(meta={"metadata_checks": {"pk_test_requires_not_null": false}}) }}
 ```
 
 ## Checks

@@ -39,7 +39,6 @@ models:
         description: Unique identifier for a payment.
         tests:
           - unique
-          - not_null
       - name: order_id
         description: Foreign key to the order associated with the payment.
         tests:

@@ -6,9 +6,11 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+import re
 from typing import Any
 
 import duckdb
+from jinja2 import Environment
 import yaml
 
 
@@ -17,6 +19,8 @@ DEFAULT_PK_TESTS = {
     "dbt_utils.unique_combination_of_columns",
     "dbt_expectations.expect_compound_columns_to_be_unique",
 }
+
+CONFIG_PATTERN = re.compile(r"\{\{\s*config\s*\((.*?)\)\s*\}\}", re.DOTALL)
 
 
 def deep_merge(left: dict[str, Any], right: dict[str, Any]) -> dict[str, Any]:
@@ -86,6 +90,35 @@ def load_schema_model_policies(project_dir: Path) -> dict[str, dict[str, Any]]:
                     policy,
                 )
 
+    return policies
+
+
+def metadata_checks_from_sql(sql: str) -> dict[str, Any]:
+    policies: dict[str, Any] = {}
+    environment = Environment()
+
+    for match in CONFIG_PATTERN.finditer(sql):
+        configs: list[dict[str, Any]] = []
+
+        def capture_config(*_args: Any, **kwargs: Any) -> str:
+            configs.append(kwargs)
+            return ""
+
+        template = environment.from_string(f"{{{{ config({match.group(1)}) }}}}")
+        template.render(config=capture_config)
+
+        for config in configs:
+            policies = deep_merge(policies, metadata_checks_from_config(config))
+
+    return policies
+
+
+def load_sql_model_policies(project_dir: Path) -> dict[str, dict[str, Any]]:
+    policies: dict[str, dict[str, Any]] = {}
+    for path in sorted(project_dir.glob("models/**/*.sql")):
+        policy = metadata_checks_from_sql(path.read_text())
+        if policy:
+            policies[path.stem] = deep_merge(policies.get(path.stem, {}), policy)
     return policies
 
 
@@ -161,10 +194,12 @@ def main() -> None:
         project = yaml.safe_load(project_file) or {}
 
     schema_model_policies = load_schema_model_policies(project_dir)
+    sql_model_policies = load_sql_model_policies(project_dir)
     rows = []
     for node in load_model_nodes(Path(args.index_dir), args.package_name):
         policy = resolved_project_policy(project, node["fqn"])
         policy = deep_merge(policy, schema_model_policies.get(node["name"], {}))
+        policy = deep_merge(policy, sql_model_policies.get(node["name"], {}))
         rows.append(policy_row(node, policy))
 
     output_path = Path(args.output)
