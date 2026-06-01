@@ -21,7 +21,6 @@ RULE_LABELS = {
     "model_description": "model description",
     "column_description": "column description",
     "primary_key": "primary key",
-    "indexed_columns": "indexed columns",
 }
 
 
@@ -122,10 +121,12 @@ def failure_rows(index_dir: Path, policy_path: Path, package_name: str) -> list[
 
         tests as (
             select
+                unique_id as test_unique_id,
                 attached_node as unique_id,
                 test_name,
                 coalesce(test_namespace, '') as test_namespace,
-                column_name
+                column_name,
+                kwargs
             from read_parquet(?)
             where attached_node is not null
         ),
@@ -154,6 +155,53 @@ def failure_rows(index_dir: Path, policy_path: Path, package_name: str) -> list[
             group by 1
         ),
 
+        compound_pk_test_columns as (
+            select
+                unique_id,
+                test_unique_id,
+                test_name,
+                test_namespace,
+                unnest(
+                    case
+                        when test_name = 'unique_combination_of_columns'
+                            then coalesce(
+                                json_extract_string(kwargs, '$.combination_of_columns')::varchar[],
+                                json_extract_string(kwargs, '$.arguments.combination_of_columns')::varchar[],
+                                []::varchar[]
+                            )
+                        when test_name = 'expect_compound_columns_to_be_unique'
+                            then coalesce(
+                                json_extract_string(kwargs, '$.column_list')::varchar[],
+                                json_extract_string(kwargs, '$.arguments.column_list')::varchar[],
+                                []::varchar[]
+                            )
+                        else []::varchar[]
+                    end
+                ) as column_name
+            from tests
+            where test_name in (
+                'unique_combination_of_columns',
+                'expect_compound_columns_to_be_unique'
+            )
+        ),
+
+        compound_pk_tests as (
+            select
+                compound_pk_test_columns.unique_id,
+                compound_pk_test_columns.test_unique_id,
+                compound_pk_test_columns.test_name,
+                compound_pk_test_columns.test_namespace,
+                count(*) as pk_column_count,
+                count(column_pk_tests.column_name) filter (
+                    where coalesce(column_pk_tests.has_not_null_test, false)
+                ) as not_null_column_count
+            from compound_pk_test_columns
+            left join column_pk_tests
+                on compound_pk_test_columns.unique_id = column_pk_tests.unique_id
+                and compound_pk_test_columns.column_name = column_pk_tests.column_name
+            group by 1, 2, 3, 4
+        ),
+
         model_pk_tests as (
             select
                 unique_id,
@@ -162,10 +210,22 @@ def failure_rows(index_dir: Path, policy_path: Path, package_name: str) -> list[
                     and test_namespace in ('dbt_utils', '')
                 ) as has_dbt_utils_compound_unique_test,
                 bool_or(
+                    test_name = 'unique_combination_of_columns'
+                    and test_namespace in ('dbt_utils', '')
+                    and pk_column_count > 0
+                    and pk_column_count = not_null_column_count
+                ) as has_dbt_utils_compound_unique_with_not_null,
+                bool_or(
                     test_name = 'expect_compound_columns_to_be_unique'
                     and test_namespace in ('dbt_expectations', '')
-                ) as has_dbt_expectations_compound_unique_test
-            from tests
+                ) as has_dbt_expectations_compound_unique_test,
+                bool_or(
+                    test_name = 'expect_compound_columns_to_be_unique'
+                    and test_namespace in ('dbt_expectations', '')
+                    and pk_column_count > 0
+                    and pk_column_count = not_null_column_count
+                ) as has_dbt_expectations_compound_unique_with_not_null
+            from compound_pk_tests
             group by 1
         ),
 
@@ -211,7 +271,7 @@ def failure_rows(index_dir: Path, policy_path: Path, package_name: str) -> list[
                 nodes.name as model_name,
                 cast(null as varchar) as column_name,
                 nodes.original_file_path,
-                'Add an accepted PK test: unique+not_null on one column, dbt_utils.unique_combination_of_columns, or dbt_expectations.expect_compound_columns_to_be_unique.' as fix
+                'Add an accepted PK test. If pk_test_requires_not_null is true, add not_null coverage for the PK column or columns too.' as fix
             from read_parquet(?) as nodes
             inner join policy
                 on nodes.unique_id = policy.unique_id
@@ -227,40 +287,28 @@ def failure_rows(index_dir: Path, policy_path: Path, package_name: str) -> list[
                   (
                       coalesce(policy.allow_unique, false)
                       and case
-                          when coalesce(policy.single_column_unique_requires_not_null, true)
+                          when coalesce(policy.pk_test_requires_not_null, true)
                               then coalesce(array_length(single_column_pk_tests.unique_not_null_columns), 0) > 0
                           else coalesce(array_length(single_column_pk_tests.unique_columns), 0) > 0
                       end
                   )
                   or (
                       coalesce(policy.allow_dbt_utils_unique_combination_of_columns, false)
-                      and coalesce(model_pk_tests.has_dbt_utils_compound_unique_test, false)
+                      and case
+                          when coalesce(policy.pk_test_requires_not_null, true)
+                              then coalesce(model_pk_tests.has_dbt_utils_compound_unique_with_not_null, false)
+                          else coalesce(model_pk_tests.has_dbt_utils_compound_unique_test, false)
+                      end
                   )
                   or (
                       coalesce(policy.allow_dbt_expectations_expect_compound_columns_to_be_unique, false)
-                      and coalesce(model_pk_tests.has_dbt_expectations_compound_unique_test, false)
+                      and case
+                          when coalesce(policy.pk_test_requires_not_null, true)
+                              then coalesce(model_pk_tests.has_dbt_expectations_compound_unique_with_not_null, false)
+                          else coalesce(model_pk_tests.has_dbt_expectations_compound_unique_test, false)
+                      end
                   )
               )
-        ),
-
-        indexed_column_failures as (
-            select
-                'indexed_columns' as rule,
-                nodes.name as model_name,
-                cast(null as varchar) as column_name,
-                nodes.original_file_path,
-                'Ensure the model has indexed columns in the Fusion metadata index.' as fix
-            from read_parquet(?) as nodes
-            inner join policy
-                on nodes.unique_id = policy.unique_id
-            left join read_parquet(?) as columns
-                on nodes.unique_id = columns.unique_id
-            where nodes.resource_type = 'model'
-              and nodes.enabled
-              and nodes.package_name = ?
-              and coalesce(policy.require_indexed_columns, false)
-            group by 1, 2, 3, 4, 5
-            having count(columns.column_name) = 0
         )
 
         select * from model_description_failures
@@ -268,8 +316,6 @@ def failure_rows(index_dir: Path, policy_path: Path, package_name: str) -> list[
         select * from column_description_failures
         union all
         select * from primary_key_failures
-        union all
-        select * from indexed_column_failures
         order by rule, model_name, column_name
         """,
         [
@@ -281,9 +327,6 @@ def failure_rows(index_dir: Path, policy_path: Path, package_name: str) -> list[
             columns,
             package_name,
             nodes,
-            package_name,
-            nodes,
-            columns,
             package_name,
         ],
     ).fetchall()
@@ -297,7 +340,7 @@ def policy_rows(policy_path: Path) -> list[tuple[Any, ...]]:
             require_model_description,
             require_column_descriptions,
             require_primary_key_test,
-            require_indexed_columns
+            pk_test_requires_not_null
         from read_json_auto(?)
         order by model_name
         """,
@@ -336,11 +379,12 @@ def main() -> None:
         print("Resolved metadata policy")
         print("========================")
         for row in policy_rows(Path(args.policy_path)):
-            model_name, model_desc, column_desc, pk_test, indexed_columns = row
+            model_name, model_desc, column_desc, pk_test, pk_not_null = row
             print(
                 f"- {model_name}: model_description={model_desc}, "
                 f"column_descriptions={column_desc}, "
-                f"primary_key_test={pk_test}, indexed_columns={indexed_columns}"
+                f"primary_key_test={pk_test}, "
+                f"pk_test_requires_not_null={pk_not_null}"
             )
 
 

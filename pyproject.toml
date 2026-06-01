@@ -9,4 +9,5 @@ dependencies = [
     "sqlfluff>=3",
     # Constrain chardet to avoid RequestsDependencyWarning from requests
     "chardet<6",
+    "pre-commit>=4.6.0",
 ]

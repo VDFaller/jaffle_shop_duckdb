@@ -31,8 +31,7 @@ models:
         require_model_description: true
         require_column_descriptions: false
         require_primary_key_test: false
-        require_indexed_columns: true
-        single_column_unique_requires_not_null: true
+        pk_test_requires_not_null: true
         primary_key_tests:
           - unique
           - dbt_utils.unique_combination_of_columns

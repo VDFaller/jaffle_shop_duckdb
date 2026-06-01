@@ -111,10 +111,7 @@ def policy_row(node: dict[str, Any], policy: dict[str, Any]) -> dict[str, Any]:
         "require_model_description": normalize_bool(policy, "require_model_description"),
         "require_column_descriptions": normalize_bool(policy, "require_column_descriptions"),
         "require_primary_key_test": normalize_bool(policy, "require_primary_key_test"),
-        "require_indexed_columns": normalize_bool(policy, "require_indexed_columns"),
-        "single_column_unique_requires_not_null": bool(
-            policy.get("single_column_unique_requires_not_null", True)
-        ),
+        "pk_test_requires_not_null": bool(policy.get("pk_test_requires_not_null", True)),
         "allow_unique": "unique" in pk_tests,
         "allow_dbt_utils_unique_combination_of_columns": (
             "dbt_utils.unique_combination_of_columns" in pk_tests
