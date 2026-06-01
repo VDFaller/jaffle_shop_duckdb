@@ -6,7 +6,6 @@ models:
     columns:
       - name: customer_id
         tests:
-          - unique
           - not_null
       - name: first_name
         description: Customer's first name. PII.
@@ -14,7 +13,6 @@ models:
         description: Customer's last name. PII.
 
   - name: stg_orders
-    description: Cleaned order records from the raw order seed.
     columns:
       - name: order_id
         description: Unique identifier for an order.

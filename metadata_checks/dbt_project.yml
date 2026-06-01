@@ -10,8 +10,8 @@ macro-paths: ["macros"]
 
 vars:
   metadata_index_dir: "target/index"
+  metadata_policy_path: "target/metadata_policy.jsonl"
   metadata_project_package: "jaffle_shop"
-  metadata_single_column_pk_requires_not_null: true
 
 data_tests:
   project_metadata_checks:

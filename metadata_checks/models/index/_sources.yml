@@ -16,3 +16,7 @@ sources:
         description: Normalized metadata for indexed dbt tests.
         config:
           external_location: "read_parquet('{{ var('metadata_index_dir') }}/dbt.test_metadata.parquet')"
+      - name: metadata_policy
+        description: Resolved metadata-check policy generated from the indexed project's dbt_project.yml.
+        config:
+          external_location: "read_json_auto('{{ var('metadata_policy_path') }}')"

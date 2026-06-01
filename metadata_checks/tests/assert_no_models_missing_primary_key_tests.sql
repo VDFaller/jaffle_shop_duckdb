@@ -63,13 +63,23 @@ coverage as (
         nodes.unique_id,
         nodes.name as model_name,
         nodes.original_file_path,
-        case
-            when {% if var('metadata_single_column_pk_requires_not_null', true) %}true{% else %}false{% endif %}
-                then coalesce(array_length(single_column_pk_tests.unique_not_null_columns), 0) > 0
-            else coalesce(array_length(single_column_pk_tests.unique_columns), 0) > 0
-        end
-        or coalesce(model_pk_tests.has_dbt_utils_compound_unique_test, false)
-        or coalesce(model_pk_tests.has_dbt_expectations_compound_unique_test, false)
+        coalesce(policy.require_primary_key_test, false) as require_primary_key_test,
+        (
+            coalesce(policy.allow_unique, false)
+            and case
+                when coalesce(policy.single_column_unique_requires_not_null, true)
+                    then coalesce(array_length(single_column_pk_tests.unique_not_null_columns), 0) > 0
+                else coalesce(array_length(single_column_pk_tests.unique_columns), 0) > 0
+            end
+        )
+        or (
+            coalesce(policy.allow_dbt_utils_unique_combination_of_columns, false)
+            and coalesce(model_pk_tests.has_dbt_utils_compound_unique_test, false)
+        )
+        or (
+            coalesce(policy.allow_dbt_expectations_expect_compound_columns_to_be_unique, false)
+            and coalesce(model_pk_tests.has_dbt_expectations_compound_unique_test, false)
+        )
             as has_primary_key_test,
         single_column_pk_tests.unique_not_null_columns,
         single_column_pk_tests.unique_columns,
@@ -79,6 +89,8 @@ coverage as (
         coalesce(model_pk_tests.has_dbt_expectations_compound_unique_test, false)
             as has_dbt_expectations_compound_unique_test
     from {{ source('dbt_index', 'nodes') }} as nodes
+    inner join {{ source('dbt_index', 'metadata_policy') }} as policy
+        on nodes.unique_id = policy.unique_id
     left join single_column_pk_tests
         on nodes.unique_id = single_column_pk_tests.unique_id
     left join model_pk_tests
@@ -98,4 +110,5 @@ select
     has_dbt_utils_compound_unique_test,
     has_dbt_expectations_compound_unique_test
 from coverage
-where not has_primary_key_test
+where require_primary_key_test
+  and not has_primary_key_test

@@ -10,5 +10,6 @@ logs/
 venv/
 .venv/
 env/
+__pycache__/
 **/*.duckdb
 **/*.duckdb.wal
