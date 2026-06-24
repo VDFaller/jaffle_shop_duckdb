@@ -1,4 +1,4 @@
-{{ config(meta={"metadata_checks": {"pk_test_requires_not_null": false}}) }}
+{{ config(meta={"metadata_checks": {"pk_test_requires_not_null": false }}) }}
 
 with source as (
     
